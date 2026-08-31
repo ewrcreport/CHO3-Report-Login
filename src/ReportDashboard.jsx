@@ -279,7 +279,7 @@ function ReportDashboard({ session, onLogout }) {
       {/* Header */}
       <div className="bg-emerald-950 text-white px-6 py-3.5 flex items-center justify-between">
         <div>
-          <div className="text-sm font-bold">ระบบรายงานสรุปข้อมูลช้างป่า</div>
+          <div className="text-sm font-bold">ระบบดาวน์โหลดข้อมูลรายงาน ช.3</div>
           <div className="text-xs text-emerald-200">
             {session?.fullName} — {ROLE_LABELS[session?.role] || "ไม่ทราบสิทธิ์"}
           </div>

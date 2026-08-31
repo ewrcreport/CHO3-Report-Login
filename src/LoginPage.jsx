@@ -150,7 +150,7 @@ function LoginPage({ onLoginSuccess }) {
             className="text-base font-bold text-emerald-950"
             style={{ color: "#132218" }}
           >
-            ระบบรายงานสรุปข้อมูลช้างป่า
+            ระบบดาวน์โหลดข้อมูลรายงาน ช.3
           </h1>
           <p className="text-xs text-stone-500 mt-1">
             สำหรับเจ้าหน้าที่ผู้มีสิทธิ์เข้าถึง

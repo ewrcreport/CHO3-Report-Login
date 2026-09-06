@@ -35,7 +35,20 @@ function mapIncidentRow(row) {
     subdistrict: row["ตำบล"] || "",
     hasDamage: row["มีความเสียหาย"] || "",
     reporter: row["ผู้บันทึก"] || "",
+    duplicateStatus: row["สถานะการซ้ำ"] || "",
+    duplicateReason: row["เหตุผลที่ซ้ำ"] || "",
+    incidentGroupId: row["รหัสกลุ่มเหตุการณ์"] || "",
+    isMasterIncident: row["เป็นเหตุการณ์หลักของกลุ่ม"] || "",
+    reviewFlag: row["สถานะตรวจสอบ"] || "",
   };
+}
+
+/** แปลงสถานะการซ้ำ (จากระบบตรวจจับอัตโนมัติ) เป็นข้อความไทยอ่านง่าย */
+function toDuplicateStatusLabel(status) {
+  const s = String(status || "").trim().toUpperCase();
+  if (s === "PENDING") return "รอตรวจสอบ";
+  if (s === "CONFIRMED") return "ยืนยันว่าซ้ำ";
+  return "ไม่ซ้ำ";
 }
 
 /** แปลงแถว Sheet_Damage — เลือกคอลัมน์ "รายการ"/"รายละเอียด" ให้ตรงตามประเภทความเสียหาย */
@@ -422,18 +435,36 @@ function ReportDashboard({ session, onLogout }) {
         </p>
 
         {/* ตารางที่ 1: เหตุการณ์ */}
-        <Card title="1. ตารางหลักเหตุการณ์">
-          <Table
-            headers={["รหัสเหตุการณ์", "วันที่", "สำนัก", "พื้นที่", "มีความเสียหาย"]}
-            rows={filteredIncidents.map((inc) => ({
-              id: inc.incidentId,
-              cells: [inc.incidentId, toThaiDate(inc.incidentDate), inc.office, inc.area, inc.hasDamage],
-            }))}
-            selectable
-            selectedIds={selectedIds}
-            onToggle={toggleSelect}
-          />
-        </Card>
+<Card title="1. ตารางหลักเหตุการณ์">
+  <Table
+    headers={
+      Number(session.role) === 1
+        ? ["รหัสเหตุการณ์", "วันที่", "สำนัก", "พื้นที่", "มีความเสียหาย", "สถานะการซ้ำ", "เหตุผลที่ซ้ำ", "กลุ่มเหตุการณ์", "เป็นหลักของกลุ่ม", "สถานะตรวจสอบ"]
+        : ["รหัสเหตุการณ์", "วันที่", "สำนัก", "พื้นที่", "มีความเสียหาย"]
+    }
+    rows={filteredIncidents.map((inc) => ({
+      id: inc.incidentId,
+      cells:
+        Number(session.role) === 1
+          ? [
+              inc.incidentId,
+              toThaiDate(inc.incidentDate),
+              inc.office,
+              inc.area,
+              inc.hasDamage,
+              toDuplicateStatusLabel(inc.duplicateStatus),
+              inc.duplicateReason,
+              inc.incidentGroupId,
+              inc.isMasterIncident === "TRUE" ? "ใช่" : inc.isMasterIncident === "FALSE" ? "ไม่ใช่" : "",
+              inc.reviewFlag,
+            ]
+          : [inc.incidentId, toThaiDate(inc.incidentDate), inc.office, inc.area, inc.hasDamage],
+    }))}
+    selectable
+    selectedIds={selectedIds}
+    onToggle={toggleSelect}
+  />
+</Card>
 
         <div className="flex items-center gap-2 my-3.5">
           <span className="text-xs text-stone-500">แสดงรายละเอียดของ</span>

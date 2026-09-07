@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { Search, SlidersHorizontal, LogOut } from "lucide-react";
 
 const API =
@@ -26,7 +26,7 @@ function toThaiDate(isoDate) {
 /** แปลงแถว Sheet_Incident (key ภาษาไทย) ให้เป็นโครงสร้างเดิมที่ตัว component ใช้อยู่แล้ว */
 function mapIncidentRow(row) {
   return {
-    incidentId: row["รหัสเหตุการณ์"],
+    incidentId: String(row["รหัสเหตุการณ์"]),
     incidentDate: toISODateOnly(row["วันที่เกิดเหตุ"]),
     office: row["สำนัก"] || "",
     area: row["ชื่อพื้นที่อนุรักษ์"] || "",
@@ -35,7 +35,7 @@ function mapIncidentRow(row) {
     subdistrict: row["ตำบล"] || "",
     hasDamage: row["มีความเสียหาย"] || "",
     reporter: row["ผู้บันทึก"] || "",
-    duplicateStatus: row["สถานะการซ้ำ"] || "",
+    duplicateStatus: row["สถานะการรายงานซ้ำ"] || "",
     duplicateReason: row["เหตุผลที่ซ้ำ"] || "",
     incidentGroupId: row["รหัสกลุ่มเหตุการณ์"] || "",
     isMasterIncident: row["เป็นเหตุการณ์หลักของกลุ่ม"] || "",
@@ -49,6 +49,41 @@ function toDuplicateStatusLabel(status) {
   if (s === "PENDING") return "รอตรวจสอบ";
   if (s === "CONFIRMED") return "ยืนยันว่าซ้ำ";
   return "ไม่ซ้ำ";
+}
+
+/** แปลงเหตุผลการตรวจพบว่าซ้ำ (จากระบบอัตโนมัติ) เป็นข้อความไทยอ่านง่าย */
+function toDuplicateReasonLabel(reason) {
+  if (!reason) return "";
+  const parts = [];
+
+  const differentAreaMatch = reason.match(/DIFFERENT\s*AreaName\(([^)]+)\)/i);
+  const emptyAreaMatch = reason.match(/EMPTY\s*AreaName\(([^)]+)\)/i);
+
+  let suffix = "";
+  if (differentAreaMatch) {
+    suffix = ` แต่คนละชุดปฏิบัติการ (${differentAreaMatch[1]})`;
+  } else if (emptyAreaMatch) {
+    suffix = ` แต่ชุดปฏิบัติการว่าง (${emptyAreaMatch[1]})`;
+  }
+
+  // การเจอ DIFFERENT/EMPTY AreaName แปลว่าผ่านเงื่อนไขระดับ 1 มาแล้วเสมอ
+  // (ระบบเช็คชุดปฏิบัติการต่อเมื่อหน่วยงาน+เวลาตรงกันก่อนเท่านั้น)
+  // แม้ค่าดิบจะไม่มีคำว่า LEVEL1 ติดมาด้วยก็ตาม
+  if (/LEVEL1/i.test(reason) || differentAreaMatch || emptyAreaMatch) {
+    parts.push("ระดับ 1: หน่วยงานเดียวกันและเกิดเหตุห่างกันไม่เกิน 180 นาที" + suffix);
+  }
+  if (/LEVEL2/i.test(reason)) {
+    const match = reason.match(/([\d.]+)\s*km/i);
+    const km = match ? match[1] : null;
+    parts.push(
+      "ระดับ 2: พิกัดเกิดเหตุห่างกันไม่เกิน 20 กม." + (km ? ` (ห่างจริง ${km} กม.)` : "")
+    );
+  }
+  if (/LEVEL3/i.test(reason)) {
+    parts.push("ระดับ 3: ช้างป่า/ฝูงเดียวกัน");
+  }
+
+  return parts.length > 0 ? parts.join(" | ") : reason;
 }
 
 /** แปลงแถว Sheet_Damage — เลือกคอลัมน์ "รายการ"/"รายละเอียด" ให้ตรงตามประเภทความเสียหาย */
@@ -69,7 +104,7 @@ function mapDamageRow(row) {
   }
 
   return {
-    incidentId: row["รหัสเหตุการณ์"],
+    incidentId: String(row["รหัสเหตุการณ์"]),
     damageType,
     item,
     detail: detail || row["หมายเหตุ"] || "",
@@ -89,7 +124,7 @@ function mapElephantRow(row) {
   }
 
   return {
-    incidentId: row["รหัสเหตุการณ์"],
+    incidentId: String(row["รหัสเหตุการณ์"]),
     recordType,
     elephantName: row["ชื่อช้าง"] || "",
     herdName: row["ชื่อฝูง"] || "",
@@ -109,6 +144,83 @@ function ExcelIcon() {
         X
       </text>
     </svg>
+  );
+}
+
+/** ช่องค้นหา+เลือกจาก dropdown (combobox) — ใช้กับตัวกรองสำนัก/ชื่อหน่วยงาน */
+function SearchableSelect({ value, onChange, options, placeholder }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState(value || "");
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    setQuery(value || "");
+  }, [value]);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filtered = options.filter((opt) => opt.toLowerCase().includes(query.toLowerCase()));
+
+  function handleInputChange(e) {
+    const v = e.target.value;
+    setQuery(v);
+    onChange(v);
+    setOpen(true);
+  }
+
+  function handleSelect(opt) {
+    setQuery(opt);
+    onChange(opt);
+    setOpen(false);
+  }
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative" }}>
+      <input
+        value={query}
+        onChange={handleInputChange}
+        onFocus={() => setOpen(true)}
+        placeholder={placeholder}
+        className="w-full box-border px-2.5 py-2 border-[1.5px] border-stone-200 rounded-lg text-xs"
+      />
+      {query && (
+        <button
+          type="button"
+          onClick={() => {
+            setQuery("");
+            onChange("");
+            setOpen(false);
+          }}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 bg-transparent border-none cursor-pointer text-xs"
+        >
+          ✕
+        </button>
+      )}
+      {open && filtered.length > 0 && (
+        <div
+          className="absolute left-0 right-0 bg-white border border-stone-200 rounded-lg shadow-lg mt-1 z-30"
+          style={{ maxHeight: "180px", overflowY: "auto" }}
+        >
+          {filtered.map((opt) => (
+            <div
+              key={opt}
+              onClick={() => handleSelect(opt)}
+              className="px-2.5 py-2 text-xs hover:bg-amber-50 cursor-pointer"
+            >
+              {opt}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -153,14 +265,29 @@ function ReportDashboard({ session, onLogout }) {
   const [filters, setFilters] = useState({
     date: "",
     hasDamage: "ทั้งหมด",
+    office: "",
+    areaName: "",
     province: "",
     district: "",
     subdistrict: "",
     elephantName: "",
     herdName: "",
     reporter: "",
+    reviewedOnly: false,
   });
   const [selectedIds, setSelectedIds] = useState(new Set());
+
+  const officeOptions = useMemo(() => {
+    return Array.from(new Set(incidents.map((i) => i.office).filter(Boolean))).sort();
+  }, [incidents]);
+
+  const areaOptions = useMemo(() => {
+    // ถ้าเลือกสำนักไว้แล้ว ให้เหลือแค่หน่วยงานที่สังกัดสำนักนั้นเท่านั้น
+    const relevantIncidents = filters.office
+      ? incidents.filter((i) => i.office === filters.office)
+      : incidents;
+    return Array.from(new Set(relevantIncidents.map((i) => i.area).filter(Boolean))).sort();
+  }, [incidents, filters.office]);
 
   function toggleSelect(id) {
     setSelectedIds((prev) => {
@@ -172,19 +299,29 @@ function ReportDashboard({ session, onLogout }) {
   }
 
   function updateFilter(key, value) {
-    setFilters((prev) => ({ ...prev, [key]: value }));
+    setFilters((prev) => {
+      const next = { ...prev, [key]: value };
+      // เปลี่ยนสำนักใหม่ -> ล้างค่าหน่วยงานเดิมทิ้ง เพราะอาจไม่ได้สังกัดสำนักใหม่แล้ว
+      if (key === "office") {
+        next.areaName = "";
+      }
+      return next;
+    });
   }
 
   function clearFilters() {
     setFilters({
       date: "",
       hasDamage: "ทั้งหมด",
+      office: "",
+      areaName: "",
       province: "",
       district: "",
       subdistrict: "",
       elephantName: "",
       herdName: "",
       reporter: "",
+      reviewedOnly: false,
     });
   }
 
@@ -204,6 +341,8 @@ function ReportDashboard({ session, onLogout }) {
       }
       if (filters.hasDamage !== "ทั้งหมด" && inc.hasDamage !== filters.hasDamage) return false;
       if (filters.date && inc.incidentDate !== filters.date) return false;
+      if (filters.office && !inc.office.includes(filters.office)) return false;
+      if (filters.areaName && !inc.area.includes(filters.areaName)) return false;
       if (filters.province && !inc.province.includes(filters.province)) return false;
       if (filters.district && !inc.district.includes(filters.district)) return false;
       if (filters.subdistrict && !inc.subdistrict.includes(filters.subdistrict)) return false;
@@ -224,6 +363,9 @@ function ReportDashboard({ session, onLogout }) {
         ) {
           return false;
         }
+      }
+      if (filters.reviewedOnly && String(inc.reviewFlag).trim().toUpperCase() !== "PASS") {
+        return false;
       }
       return true;
     });
@@ -362,6 +504,26 @@ function ReportDashboard({ session, onLogout }) {
               </span>
             </div>
             <div className="flex flex-wrap gap-3">
+              {[0, 1, 2].includes(Number(session.role)) && (
+                <Field label="สำนัก">
+                  <SearchableSelect
+                    value={filters.office}
+                    onChange={(v) => updateFilter("office", v)}
+                    options={officeOptions}
+                    placeholder="ค้นหาสำนัก..."
+                  />
+                </Field>
+              )}
+              {[0, 1, 2].includes(Number(session.role)) && (
+                <Field label="ชื่อหน่วยงาน">
+                  <SearchableSelect
+                    value={filters.areaName}
+                    onChange={(v) => updateFilter("areaName", v)}
+                    options={areaOptions}
+                    placeholder="ค้นหาหน่วยงาน..."
+                  />
+                </Field>
+              )}
               <Field label="วันที่เกิดเหตุ">
                 <input
                   type="date"
@@ -426,6 +588,18 @@ function ReportDashboard({ session, onLogout }) {
                   className="w-full box-border px-2.5 py-2 border-[1.5px] border-stone-200 rounded-lg text-xs"
                 />
               </Field>
+              {[1, 2, 3, 4].includes(Number(session.role)) && (
+                <div style={{ flex: "1 1 140px" }} className="flex items-end pb-2">
+                  <label className="flex items-center gap-2 text-xs font-semibold text-stone-600 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={filters.reviewedOnly}
+                      onChange={(e) => updateFilter("reviewedOnly", e.target.checked)}
+                    />
+                    พิกัดช้างป่าออก
+                  </label>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -439,27 +613,35 @@ function ReportDashboard({ session, onLogout }) {
   <Table
     headers={
       Number(session.role) === 1
-        ? ["รหัสเหตุการณ์", "วันที่", "สำนัก", "พื้นที่", "มีความเสียหาย", "สถานะการซ้ำ", "เหตุผลที่ซ้ำ", "กลุ่มเหตุการณ์", "เป็นหลักของกลุ่ม", "สถานะตรวจสอบ"]
+        ? ["รหัสเหตุการณ์", "วันที่", "สำนัก", "พื้นที่", "มีความเสียหาย", "สถานะการรายงานซ้ำ", "เหตุผลที่ซ้ำ", "กลุ่มเหตุการณ์", "พิกัดช้างป่าออก"]
+        : [2, 3, 4].includes(Number(session.role))
+        ? ["รหัสเหตุการณ์", "วันที่", "สำนัก", "พื้นที่", "มีความเสียหาย", "สถานะการรายงานซ้ำ", "เหตุผลที่ซ้ำ", "พิกัดช้างป่าออก"]
         : ["รหัสเหตุการณ์", "วันที่", "สำนัก", "พื้นที่", "มีความเสียหาย"]
     }
-    rows={filteredIncidents.map((inc) => ({
-      id: inc.incidentId,
-      cells:
-        Number(session.role) === 1
-          ? [
-              inc.incidentId,
-              toThaiDate(inc.incidentDate),
-              inc.office,
-              inc.area,
-              inc.hasDamage,
-              toDuplicateStatusLabel(inc.duplicateStatus),
-              inc.duplicateReason,
-              inc.incidentGroupId,
-              inc.isMasterIncident === "TRUE" ? "ใช่" : inc.isMasterIncident === "FALSE" ? "ไม่ใช่" : "",
-              inc.reviewFlag,
-            ]
-          : [inc.incidentId, toThaiDate(inc.incidentDate), inc.office, inc.area, inc.hasDamage],
-    }))}
+     rows={filteredIncidents.map((inc) => {
+      const baseCells = [inc.incidentId, toThaiDate(inc.incidentDate), inc.office, inc.area, inc.hasDamage];
+      const passMark = String(inc.reviewFlag).trim().toUpperCase() === "PASS" ? "✓" : "";
+
+      let cells = baseCells;
+      if (Number(session.role) === 1) {
+        cells = [
+          ...baseCells,
+          toDuplicateStatusLabel(inc.duplicateStatus),
+          toDuplicateReasonLabel(inc.duplicateReason),
+          inc.incidentGroupId,
+          passMark,
+        ];
+      } else if ([2, 3, 4].includes(Number(session.role))) {
+        cells = [
+          ...baseCells,
+          toDuplicateStatusLabel(inc.duplicateStatus),
+          toDuplicateReasonLabel(inc.duplicateReason),
+          passMark,
+        ];
+      }
+
+      return { id: inc.incidentId, cells };
+    })}
     selectable
     selectedIds={selectedIds}
     onToggle={toggleSelect}

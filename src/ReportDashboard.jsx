@@ -588,7 +588,7 @@ function ReportDashboard({ session, onLogout }) {
                   className="w-full box-border px-2.5 py-2 border-[1.5px] border-stone-200 rounded-lg text-xs"
                 />
               </Field>
-              {[1, 2, 3, 4].includes(Number(session.role)) && (
+              {[1, 2, 4].includes(Number(session.role)) && (
                 <div style={{ flex: "1 1 140px" }} className="flex items-end pb-2">
                   <label className="flex items-center gap-2 text-xs font-semibold text-stone-600 cursor-pointer">
                     <input
@@ -614,7 +614,7 @@ function ReportDashboard({ session, onLogout }) {
     headers={
       Number(session.role) === 1
         ? ["รหัสเหตุการณ์", "วันที่", "สำนัก", "พื้นที่", "มีความเสียหาย", "สถานะการรายงานซ้ำ", "เหตุผลที่ซ้ำ", "กลุ่มเหตุการณ์", "พิกัดช้างป่าออก"]
-        : [2, 3, 4].includes(Number(session.role))
+        : [2, 4].includes(Number(session.role))
         ? ["รหัสเหตุการณ์", "วันที่", "สำนัก", "พื้นที่", "มีความเสียหาย", "สถานะการรายงานซ้ำ", "เหตุผลที่ซ้ำ", "พิกัดช้างป่าออก"]
         : ["รหัสเหตุการณ์", "วันที่", "สำนัก", "พื้นที่", "มีความเสียหาย"]
     }
@@ -631,7 +631,7 @@ function ReportDashboard({ session, onLogout }) {
           inc.incidentGroupId,
           passMark,
         ];
-      } else if ([2, 3, 4].includes(Number(session.role))) {
+      } else if ([2, 4].includes(Number(session.role))) {
         cells = [
           ...baseCells,
           toDuplicateStatusLabel(inc.duplicateStatus),
